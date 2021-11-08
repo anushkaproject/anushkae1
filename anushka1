@@ -1,0 +1,709 @@
+{
+ "cells": [
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "### Objective: "
+   ]
+  },
+  {
+   "cell_type": "raw",
+   "metadata": {},
+   "source": [
+    "This notebook performs NLP text classification on the coronavirus tweets using pyspark for multi-class classification which involves identifying various sentiment classes from the tweets."
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "### Setting up pyspark "
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 1,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "#Import packages\n",
+    "from pyspark.sql import SQLContext\n",
+    "from pyspark import SparkContext, SparkConf\n",
+    "\n",
+    "# Create sparkcontext with necessary configs\n",
+    "conf = SparkConf().setAll([('spark.executor.memory', '2g')])\n",
+    "sc =SparkContext(conf=conf)\n",
+    "sqlContext = SQLContext(sc)"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "### Dataset "
+   ]
+  },
+  {
+   "cell_type": "raw",
+   "metadata": {},
+   "source": [
+    "For this assignment \"Attachment_1635667433.csv\" file has been used as the dataset which has been loaded into HDFS(Hadoop Distributed File System).\n",
+    "The dataset contains below columns:\n",
+    "1) Location - Location of the user\n",
+    "2) TweetAt - Time of the tweet\n",
+    "3) OriginalTweet - Tweet by the user\n",
+    "4) Label - Sentiment Class of the tweet"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "Copying the data to Hadoop"
+   ]
+  },
+  {
+   "cell_type": "raw",
+   "metadata": {},
+   "source": [
+    "hadoop fs -put Attachment_1635667433.csv /data"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "### Data read from Hadoop and Data Transformation "
+   ]
+  },
+  {
+   "cell_type": "raw",
+   "metadata": {},
+   "source": [
+    "In this section data file from HDFS has been read as pyspark dataframe and necessary data transformations has been done on the CSV dataset as to prepare the data for NLP text multi-class classification modelling."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 3,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# Data read from HDFS\n",
+    "data = sqlContext.read.format('com.databricks.spark.csv').\\\n",
+    "        options(header='true', inferschema='true').\\\n",
+    "        load('Attachment_1635667433.csv')"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 4,
+   "metadata": {},
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "+--------------------+--------------------+--------------------+--------------------+--------------------+---------+\n",
+      "|            UserName|          ScreenName|            Location|             TweetAt|       OriginalTweet|Sentiment|\n",
+      "+--------------------+--------------------+--------------------+--------------------+--------------------+---------+\n",
+      "|                3799|               48751|              London|          16-03-2020|@MeNyrbie @Phil_G...|  Neutral|\n",
+      "|                3800|               48752|                  UK|          16-03-2020|advice Talk to yo...| Positive|\n",
+      "|                3801|               48753|           Vagabonds|          16-03-2020|Coronavirus Austr...| Positive|\n",
+      "|                3802|               48754|                null|          16-03-2020|My food stock is ...|     null|\n",
+      "|              PLEASE|         don't panic| THERE WILL BE EN...|                null|                null|     null|\n",
+      "|           Stay calm|          stay safe.|                null|                null|                null|     null|\n",
+      "|#COVID19france #C...|            Positive|                null|                null|                null|     null|\n",
+      "|                3803|               48755|                null|          16-03-2020|Me, ready to go a...|     null|\n",
+      "|Not because I'm p...| but because my f...|          but please| don't panic. It ...|                null|     null|\n",
+      "|#CoronavirusFranc...|  Extremely Negative|                null|                null|                null|     null|\n",
+      "|                3804|               48756|ÜT: 36.319708,-82...|          16-03-2020|As news of the re...| Positive|\n",
+      "|                3805|               48757|35.926541,-78.753267|          16-03-2020|\"Cashier at groce...| Positive|\n",
+      "|                3806|               48758|             Austria|          16-03-2020|Was at the superm...|     null|\n",
+      "|#toiletpapercrisi...|             Neutral|                null|                null|                null|     null|\n",
+      "|                3807|               48759|     Atlanta, GA USA|          16-03-2020|Due to COVID-19 o...| Positive|\n",
+      "|                3808|               48760|    BHAVNAGAR,GUJRAT|          16-03-2020|For corona preven...| Negative|\n",
+      "|                3809|               48761|      Makati, Manila|          16-03-2020|All month there h...|  Neutral|\n",
+      "|                3810|               48762|Pitt Meadows, BC,...|          16-03-2020|Due to the Covid-...|     null|\n",
+      "|The wait time may...| particularly bee...|                null|                null|                null|     null|\n",
+      "|We thank you for ...|  Extremely Positive|                null|                null|                null|     null|\n",
+      "+--------------------+--------------------+--------------------+--------------------+--------------------+---------+\n",
+      "only showing top 20 rows\n",
+      "\n"
+     ]
+    }
+   ],
+   "source": [
+    "# Sample data\n",
+    "data.show()"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 5,
+   "metadata": {},
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "+--------------------+---------+\n",
+      "|       OriginalTweet|Sentiment|\n",
+      "+--------------------+---------+\n",
+      "|@MeNyrbie @Phil_G...|  Neutral|\n",
+      "|advice Talk to yo...| Positive|\n",
+      "|Coronavirus Austr...| Positive|\n",
+      "|My food stock is ...|     null|\n",
+      "|                null|     null|\n",
+      "+--------------------+---------+\n",
+      "only showing top 5 rows\n",
+      "\n"
+     ]
+    }
+   ],
+   "source": [
+    "# Removing unwanted columns\n",
+    "drop_list = ['UserName', 'ScreenName', 'Location', 'TweetAt']\n",
+    "data = data.select([column for column in data.columns if column not in drop_list])\n",
+    "data.show(5)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 6,
+   "metadata": {},
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "root\n",
+      " |-- OriginalTweet: string (nullable = true)\n",
+      " |-- Sentiment: string (nullable = true)\n",
+      "\n"
+     ]
+    }
+   ],
+   "source": [
+    "# Schema of the data\n",
+    "data.printSchema()"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 7,
+   "metadata": {},
+   "outputs": [
+    {
+     "data": {
+      "text/plain": [
+       "28617"
+      ]
+     },
+     "execution_count": 7,
+     "metadata": {},
+     "output_type": "execute_result"
+    }
+   ],
+   "source": [
+    "# Dropping nulls from the data\n",
+    "data = data.dropna()\n",
+    "data.count()"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 8,
+   "metadata": {},
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "+--------------------+-----+\n",
+      "|           Sentiment|count|\n",
+      "+--------------------+-----+\n",
+      "|            Positive| 7718|\n",
+      "|            Negative| 6857|\n",
+      "|             Neutral| 5224|\n",
+      "|  Extremely Positive| 4412|\n",
+      "|  Extremely Negative| 3751|\n",
+      "|   social distancing|    5|\n",
+      "|    N. Y. - April 10|    3|\n",
+      "|        Corona Virus|    2|\n",
+      "| or click the lin...|    2|\n",
+      "| supermarket workers|    2|\n",
+      "|           of course|    2|\n",
+      "| but we also need...|    2|\n",
+      "|        Stay with us|    2|\n",
+      "|            delivery|    2|\n",
+      "| state governors ...|    2|\n",
+      "| ecological collapse|    2|\n",
+      "| not going to the...|    2|\n",
+      "|             however|    2|\n",
+      "| just \"\"selfish p...|    2|\n",
+      "| the company prod...|    1|\n",
+      "+--------------------+-----+\n",
+      "only showing top 20 rows\n",
+      "\n"
+     ]
+    }
+   ],
+   "source": [
+    "# Count of sentiment classes\n",
+    "from pyspark.sql.functions import col\n",
+    "data.groupBy(\"Sentiment\") \\\n",
+    "    .count() \\\n",
+    "    .orderBy(col(\"count\").desc()) \\\n",
+    "    .show()"
+   ]
+  },
+  {
+   "cell_type": "raw",
+   "metadata": {},
+   "source": [
+    "As we can see from above data analysis, the data is raw and messy containing mismatched column values, hence only rows where \"Sentiment\" contains \"Positive\", \"Negative\", \"Neutral\",\"Extremely Positive\",\"Extremely Negative\" values have been filtered below to get clean data."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 9,
+   "metadata": {
+    "scrolled": true
+   },
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "+------------------+-----+\n",
+      "|         Sentiment|count|\n",
+      "+------------------+-----+\n",
+      "|          Positive| 7718|\n",
+      "|          Negative| 6857|\n",
+      "|           Neutral| 5224|\n",
+      "|Extremely Positive| 4412|\n",
+      "|Extremely Negative| 3751|\n",
+      "+------------------+-----+\n",
+      "\n"
+     ]
+    }
+   ],
+   "source": [
+    "import pyspark.sql.functions as f\n",
+    "data1 = data.where(f.col(\"Sentiment\").isin([\"Positive\", \"Negative\", \"Neutral\",\"Extremely Positive\",\"Extremely Negative\"]))\n",
+    "data1.groupBy(\"Sentiment\") \\\n",
+    "    .count() \\\n",
+    "    .orderBy(col(\"count\").desc()) \\\n",
+    "    .show()"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "#### Count Vector generation for Feature columns "
+   ]
+  },
+  {
+   "cell_type": "raw",
+   "metadata": {},
+   "source": [
+    "As the data is in the form of text, the data has been transformeed with regular expressions, tokenizers and stop words to generate count vector of the feature columns for the modelling as input features."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 10,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "from pyspark.ml.feature import RegexTokenizer, StopWordsRemover, CountVectorizer\n",
+    "from pyspark.ml.classification import LogisticRegression\n",
+    "# regular expression tokenizer\n",
+    "regexTokenizer = RegexTokenizer(inputCol=\"OriginalTweet\", outputCol=\"words\", pattern=\"\\\\W\")\n",
+    "# stop words\n",
+    "add_stopwords = [\"http\",\"https\",\"amp\",\"rt\",\"t\",\"c\",\"the\"] \n",
+    "stopwordsRemover = StopWordsRemover(inputCol=\"words\", outputCol=\"filtered\").setStopWords(add_stopwords)\n",
+    "# bag of words count\n",
+    "countVectors = CountVectorizer(inputCol=\"filtered\", outputCol=\"features\", vocabSize=10000, minDF=5)"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "#### String Indexer for Target columns "
+   ]
+  },
+  {
+   "cell_type": "raw",
+   "metadata": {},
+   "source": [
+    "Since the label/target column is in the form of string, string indexing has been done on the same as to convert the text into label."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 11,
+   "metadata": {},
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "+--------------------+---------+--------------------+--------------------+--------------------+-----+\n",
+      "|       OriginalTweet|Sentiment|               words|            filtered|            features|label|\n",
+      "+--------------------+---------+--------------------+--------------------+--------------------+-----+\n",
+      "|@MeNyrbie @Phil_G...|  Neutral|[menyrbie, phil_g...|[menyrbie, phil_g...|(8442,[1,5],[2.0,...|  2.0|\n",
+      "|advice Talk to yo...| Positive|[advice, talk, to...|[advice, talk, to...|(8442,[0,2,25,34,...|  0.0|\n",
+      "|Coronavirus Austr...| Positive|[coronavirus, aus...|[coronavirus, aus...|(8442,[0,5,6,8,9,...|  0.0|\n",
+      "|As news of the re...| Positive|[as, news, of, th...|[as, news, of, re...|(8442,[0,1,2,5,8,...|  0.0|\n",
+      "|\"Cashier at groce...| Positive|[cashier, at, gro...|[cashier, at, gro...|(8442,[0,4,5,11,1...|  0.0|\n",
+      "+--------------------+---------+--------------------+--------------------+--------------------+-----+\n",
+      "only showing top 5 rows\n",
+      "\n"
+     ]
+    }
+   ],
+   "source": [
+    "from pyspark.ml import Pipeline\n",
+    "from pyspark.ml.feature import OneHotEncoder, StringIndexer, VectorAssembler\n",
+    "label_stringIdx = StringIndexer(inputCol = \"Sentiment\", outputCol = \"label\")\n",
+    "pipeline = Pipeline(stages=[regexTokenizer, stopwordsRemover, countVectors, label_stringIdx])\n",
+    "# Fit the pipeline to training documents.\n",
+    "pipelineFit = pipeline.fit(data1)\n",
+    "dataset = pipelineFit.transform(data1)\n",
+    "dataset.show(5)"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "### Splitting the data into training and testing datasets "
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 12,
+   "metadata": {},
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "Training Dataset Count: 20936\n",
+      "Test Dataset Count: 7026\n"
+     ]
+    }
+   ],
+   "source": [
+    "# set seed for reproducibility\n",
+    "(trainingData, testData) = dataset.randomSplit([0.75, 0.25], seed=123)\n",
+    "print(\"Training Dataset Count: \" + str(trainingData.count()))\n",
+    "print(\"Test Dataset Count: \" + str(testData.count()))"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "### Modelling and Performance Evaluation "
+   ]
+  },
+  {
+   "cell_type": "raw",
+   "metadata": {},
+   "source": [
+    "As part of the modelling below models are fitted on the training data and performance of the trained model has been evaluated on the test data using \"Accuracy\" as the evaluation metric."
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "#### Logisitc Regression "
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 13,
+   "metadata": {},
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "+------------------------------+------------------+------------------------------+-----+----------+\n",
+      "|                 OriginalTweet|         Sentiment|                   probability|label|prediction|\n",
+      "+------------------------------+------------------+------------------------------+-----+----------+\n",
+      "|Want a cheap way to stock u...|Extremely Positive|[0.9709110992654566,0.01396...|  3.0|       0.0|\n",
+      "|During lockdown key challen...|          Positive|[0.9533549747269457,0.01169...|  0.0|       0.0|\n",
+      "|Kris Hamer VP Research and ...|          Positive|[0.9361720668011771,0.02474...|  0.0|       0.0|\n",
+      "|All Natural Hand Sanitizers...|Extremely Positive|[0.9071111220622703,0.01217...|  3.0|       0.0|\n",
+      "|COVID 19 POLICY IDEA If law...|          Positive|[0.8997267713132072,0.03409...|  0.0|       0.0|\n",
+      "|COVID 19 POLICY IDEA If law...|          Positive|[0.8908480842113059,0.03295...|  0.0|       0.0|\n",
+      "|Like I said on https://t.co...|Extremely Positive|[0.8863474546190768,0.00745...|  3.0|       0.0|\n",
+      "|up on higher oil prices not...|Extremely Negative|[0.8775172136874372,0.02013...|  4.0|       0.0|\n",
+      "|Day 19: We have acquired ho...|          Positive|[0.8649471157988821,0.03722...|  0.0|       0.0|\n",
+      "|In the wake of the COVID 19...|          Negative|[0.8643266559046874,0.03054...|  1.0|       0.0|\n",
+      "+------------------------------+------------------+------------------------------+-----+----------+\n",
+      "only showing top 10 rows\n",
+      "\n"
+     ]
+    }
+   ],
+   "source": [
+    "# Model fit on train data\n",
+    "lr = LogisticRegression(maxIter=20, regParam=0.3, elasticNetParam=0)\n",
+    "lrModel = lr.fit(trainingData)\n",
+    "# predictions generation on test data\n",
+    "predictions = lrModel.transform(testData)\n",
+    "# Sample predictions\n",
+    "predictions.filter(predictions['prediction'] == 0) \\\n",
+    "    .select(\"OriginalTweet\",\"Sentiment\",\"probability\",\"label\",\"prediction\") \\\n",
+    "    .orderBy(\"probability\", ascending=False) \\\n",
+    "    .show(n = 10, truncate = 30)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 14,
+   "metadata": {},
+   "outputs": [
+    {
+     "data": {
+      "text/plain": [
+       "0.5043968673978996"
+      ]
+     },
+     "execution_count": 14,
+     "metadata": {},
+     "output_type": "execute_result"
+    }
+   ],
+   "source": [
+    "# Accuracy of the model\n",
+    "from pyspark.ml.evaluation import MulticlassClassificationEvaluator\n",
+    "evaluator = MulticlassClassificationEvaluator(predictionCol=\"prediction\")\n",
+    "evaluator.evaluate(predictions)"
+   ]
+  },
+  {
+   "cell_type": "raw",
+   "metadata": {},
+   "source": [
+    "As we can see above from the sample predictions and the model perfromance evalation, the accuracy of the model is nearly 50% only."
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "#### Naive Bayes Classifier "
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 15,
+   "metadata": {},
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "+------------------------------+------------------+------------------------------+-----+----------+\n",
+      "|                 OriginalTweet|         Sentiment|                   probability|label|prediction|\n",
+      "+------------------------------+------------------+------------------------------+-----+----------+\n",
+      "|I was supposed to be tested...|          Positive|[0.9977289582286879,0.00100...|  0.0|       0.0|\n",
+      "|In the past month, searches...|Extremely Positive|[0.9962634447901577,0.00203...|  3.0|       0.0|\n",
+      "|beat2394 We are working to ...|          Positive|[0.9959887562216836,0.00318...|  0.0|       0.0|\n",
+      "|#PanicBuying due to #corona...|          Positive|[0.9957500066390513,0.00405...|  0.0|       0.0|\n",
+      "|COVID 19 POLICY IDEA If law...|          Positive|[0.9954548272413315,4.80815...|  0.0|       0.0|\n",
+      "|Sorry restaurants owners. I...|          Negative|[0.9942931453602558,0.00486...|  1.0|       0.0|\n",
+      "|Help Save Chewy ! SHOP CHEW...|Extremely Positive|[0.9942078761654852,6.99687...|  3.0|       0.0|\n",
+      "|Kindly contact Us bamy glob...|Extremely Positive|[0.9941080466752362,8.65179...|  3.0|       0.0|\n",
+      "|Join Sanja Ilic for a consu...|Extremely Positive|[0.9934663817430563,2.17885...|  3.0|       0.0|\n",
+      "|3) consumer confidence and ...|Extremely Positive|[0.9933579214797139,0.00278...|  3.0|       0.0|\n",
+      "+------------------------------+------------------+------------------------------+-----+----------+\n",
+      "only showing top 10 rows\n",
+      "\n"
+     ]
+    }
+   ],
+   "source": [
+    "from pyspark.ml.classification import NaiveBayes\n",
+    "nb = NaiveBayes(smoothing=1)\n",
+    "# Model fit on train data\n",
+    "model = nb.fit(trainingData)\n",
+    "# Predictions generations on test data\n",
+    "predictions = model.transform(testData)\n",
+    "# Sample predictions\n",
+    "predictions.filter(predictions['prediction'] == 0) \\\n",
+    "    .select(\"OriginalTweet\",\"Sentiment\",\"probability\",\"label\",\"prediction\") \\\n",
+    "    .orderBy(\"probability\", ascending=False) \\\n",
+    "    .show(n = 10, truncate = 30)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 16,
+   "metadata": {},
+   "outputs": [
+    {
+     "data": {
+      "text/plain": [
+       "0.4868823128747606"
+      ]
+     },
+     "execution_count": 16,
+     "metadata": {},
+     "output_type": "execute_result"
+    }
+   ],
+   "source": [
+    "# Accuracy of the model\n",
+    "evaluator = MulticlassClassificationEvaluator(predictionCol=\"prediction\")\n",
+    "evaluator.evaluate(predictions)"
+   ]
+  },
+  {
+   "cell_type": "raw",
+   "metadata": {},
+   "source": [
+    "The accuracy of the Naive Bayes Classifier model is nearly same as the Logistic Regression Classifier model which is at 50% accuracy."
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "#### Random Forest Classifier "
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 17,
+   "metadata": {},
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "+------------------------------+------------------+------------------------------+-----+----------+\n",
+      "|                 OriginalTweet|         Sentiment|                   probability|label|prediction|\n",
+      "+------------------------------+------------------+------------------------------+-----+----------+\n",
+      "|Thanks for the good advice ...|Extremely Positive|[0.309352733340961,0.211543...|  3.0|       0.0|\n",
+      "|Strategia  joins the war ag...|Extremely Positive|[0.30129858622777456,0.2229...|  3.0|       0.0|\n",
+      "|\"\"\"The US is asking other c...|          Positive|[0.30078222202964466,0.2185...|  0.0|       0.0|\n",
+      "|Starting today, you can ord...|          Positive|[0.29932972834794147,0.2212...|  0.0|       0.0|\n",
+      "|The first 2 steps in the di...|Extremely Positive|[0.29897848271868277,0.2186...|  3.0|       0.0|\n",
+      "|Knowing how to do something...|Extremely Positive|[0.2977446263529051,0.22160...|  3.0|       0.0|\n",
+      "|Attn  @GovTimWalz  what bet...|Extremely Positive|[0.2974268600114067,0.22057...|  3.0|       0.0|\n",
+      "|Out with the old and In wit...|Extremely Positive|[0.2969321869261518,0.23134...|  3.0|       0.0|\n",
+      "|Good morning in this is sur...|Extremely Positive|[0.29690551991708686,0.2122...|  3.0|       0.0|\n",
+      "|Napa Valley Distillery make...|Extremely Positive|[0.2964791656746113,0.21256...|  3.0|       0.0|\n",
+      "+------------------------------+------------------+------------------------------+-----+----------+\n",
+      "only showing top 10 rows\n",
+      "\n"
+     ]
+    }
+   ],
+   "source": [
+    "from pyspark.ml.classification import RandomForestClassifier\n",
+    "# Configuring model params\n",
+    "rf = RandomForestClassifier(labelCol=\"label\", \\\n",
+    "                            featuresCol=\"features\", \\\n",
+    "                            numTrees = 100, \\\n",
+    "                            maxDepth = 4, \\\n",
+    "                            maxBins = 32)\n",
+    "# Train model with Training Data\n",
+    "rfModel = rf.fit(trainingData)\n",
+    "# Generate predictions\n",
+    "predictions = rfModel.transform(testData)\n",
+    "# Sample predictions\n",
+    "predictions.filter(predictions['prediction'] == 0) \\\n",
+    "    .select(\"OriginalTweet\",\"Sentiment\",\"probability\",\"label\",\"prediction\") \\\n",
+    "    .orderBy(\"probability\", ascending=False) \\\n",
+    "    .show(n = 10, truncate = 30)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 18,
+   "metadata": {},
+   "outputs": [
+    {
+     "data": {
+      "text/plain": [
+       "0.1159244003501126"
+      ]
+     },
+     "execution_count": 18,
+     "metadata": {},
+     "output_type": "execute_result"
+    }
+   ],
+   "source": [
+    "# Accuracy of the model\n",
+    "evaluator = MulticlassClassificationEvaluator(predictionCol=\"prediction\")\n",
+    "evaluator.evaluate(predictions)"
+   ]
+  },
+  {
+   "cell_type": "raw",
+   "metadata": {},
+   "source": [
+    "The accuracy of the random forest classifier model is only 12% which is very low because on the sparsity of the feature vectors."
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "### Conclusion: "
+   ]
+  },
+  {
+   "cell_type": "raw",
+   "metadata": {},
+   "source": [
+    "From the above data analysis, trasformation, modelling and performance management we can conclude that \"Logitic Regression Classifier\" is the best suited model for multi-class text classification of the coronavirus tweets in predicting the sentiment categories.\n",
+    "\n",
+    "The accuracy of the model is average because of the sparsity of the feature vectors of the data and the dataset is very small compared to the number of classes it has in the label column and the labels like \"Positive\" and \"Extremely Positive\" and \"Negative\" and \"Extremely Negative\" are having tweets of similair feature values so the models are not able to capture them well to give higher accuracy predictions.\n",
+    "\n",
+    "This notebooks concludes that with the NLP concepts, Multi-class classificaiton can be done on raw textual data, better and large data with correct lables can help to get models with high accuracy."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": []
+  }
+ ],
+ "metadata": {
+  "kernelspec": {
+   "display_name": "Python 3",
+   "language": "python",
+   "name": "python3"
+  },
+  "language_info": {
+   "codemirror_mode": {
+    "name": "ipython",
+    "version": 3
+   },
+   "file_extension": ".py",
+   "mimetype": "text/x-python",
+   "name": "python",
+   "nbconvert_exporter": "python",
+   "pygments_lexer": "ipython3",
+   "version": "3.8.5"
+  }
+ },
+ "nbformat": 4,
+ "nbformat_minor": 5
+}
